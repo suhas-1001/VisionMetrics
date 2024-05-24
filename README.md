@@ -1,8 +1,6 @@
 # VisionMetrics
 
-# Project Name
-
-![Project Logo](link_to_logo.png)
+![Project Logo]([link_to_logo.png](https://github.com/suhas-1001/VisionMetrics/blob/main/static/Images/Logo/LogoSample_Final_copy.jpg))
 
 ## Table of Contents
 
