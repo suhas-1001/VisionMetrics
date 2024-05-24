@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [Features](#features)
 - [Usage](#usage)
+- [Contributing](#contributing)
 
 
 ## Introduction
@@ -191,6 +192,14 @@ Depending on the project, you might have options to customize settings, filter d
 If you encounter any issues or errors while using the application, refer to the project documentation or error messages for guidance.
 Common issues could include incorrect input data, missing dependencies, or configuration errors.
 
--Feedback and Improvement:
+- Feedback and Improvement:
 Provide feedback on the application usability, performance, and features.
 If there are areas for improvement or additional features you'd like to see, consider discussing them with the project maintainers or contributing to the project yourself.
+
+
+## Contributing
+- Fork the repository
+- Create a new branch (git checkout -b feature-branch)
+- Commit your changes (git commit -m 'Add some feature')
+- Push to the branch (git push origin feature-branch)
+- Open a pull request
