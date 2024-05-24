@@ -4,6 +4,9 @@ from flask import Flask, Response, render_template
 import cv2
 import numpy as np
 import json
+from pytube import YouTube
+import time
+from twilio.rest import Client
 
 
 app = Flask(__name__)
@@ -11,6 +14,18 @@ app.secret_key = 'ASDF7890'
 
 
 is_active = False
+
+
+# Twilio configuration
+TWILIO_ACCOUNT_SID = 'Enter_ACCOUNT_SID'
+TWILIO_AUTH_TOKEN = 'Enter_AUTH_TOKEN'
+TWILIO_PHONE_NUMBER = 'Enter_PHONE_NUMBER' # For SMS
+
+# Recipient's phone number
+RECIPIENT_PHONE_NUMBER = 'Enter_RECIPIENT_PHONE_NUMBER' # For SMS
+
+client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
 
 # Hardcoded user credentials for simplicity
 USERS = {
@@ -20,6 +35,35 @@ USERS = {
     'nani4': 'pass4',
     # Add more users as needed
 }
+
+
+class Msg_Stream:
+    def __init__(self):
+        self.messages = []
+
+    def add_message(self, message):
+        self.messages.append(message)
+
+    def get_messages(self):
+        return self.messages
+
+global_stream = Msg_Stream()
+
+
+def send_alert(message):
+    try:
+        # Send SMS
+        sms_message = client.messages.create(
+            body=message,
+            from_=TWILIO_PHONE_NUMBER,
+            to=RECIPIENT_PHONE_NUMBER
+        )
+        print(f"SMS sent: {sms_message.sid}")
+
+    except Exception as e:
+        print(f"Failed to send alert: {e}")
+
+
 
 # This function calculates the average of detected circles.
 def avg_circles(circles, b):
@@ -51,10 +95,49 @@ def calibrate_circle(frame, center, radius, separation=10):
         cv2.line(frame, p1[i], p2[i], (0, 255, 0), 2)
         cv2.putText(frame, str(i*separation), p2[i], cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 0, 0), 1, cv2.LINE_AA)
 
+# # This function captures the frame from the camera, processes it to find circles and lines, and then calculates the measurements.
+# def take_measure(threshold_img, threshold_ln, minLineLength, maxLineGap, diff1LowerBound, diff1UpperBound, diff2LowerBound, diff2UpperBound, min_angle, max_angle, min_value, max_value, units):
+#     global is_active
+#     cap = cv2.VideoCapture(0)  # 0 for the default camera, you can change the index if you have multiple cameras
+
+def select_camera_source():
+    # Try different camera indices until one successfully opens
+    for idx in range(3):  # Try up to index 2 (adjust as needed)
+        cap = cv2.VideoCapture(idx)
+        if cap.isOpened():
+            return cap
+    return None  # Return None if no camera is available
+
+
+def calculate_percentage(value, percentage):
+    return (value * percentage) / 100
+
+
 # This function captures the frame from the camera, processes it to find circles and lines, and then calculates the measurements.
 def take_measure(threshold_img, threshold_ln, minLineLength, maxLineGap, diff1LowerBound, diff1UpperBound, diff2LowerBound, diff2UpperBound, min_angle, max_angle, min_value, max_value, units):
     global is_active
-    cap = cv2.VideoCapture(0)  # 0 for the default camera, you can change the index if you have multiple cameras
+    start_time = time.time()
+    cap = select_camera_source()
+
+    # # YouTube video URL
+    # video_url = 'https://www.youtube.com/watch?v=AsDfiYAqRjE'
+
+    # # Create a YouTube object
+    # yt = YouTube(video_url)
+
+    # # Get the highest resolution stream
+    # stream = yt.streams.get_highest_resolution()
+
+    # # Extract the stream URL
+    # stream_url = stream.url
+
+    # # Use the stream URL with cv2.VideoCapture
+    # cap = cv2.VideoCapture(stream_url)
+
+
+    if cap is None:
+        print("Error: No camera available")
+        return
 
     # while True:
     while is_active and cap.isOpened():
@@ -186,11 +269,27 @@ def take_measure(threshold_img, threshold_ln, minLineLength, maxLineGap, diff1Lo
 				
                 val = new_value
 
+                percent_result = calculate_percentage(max_value, threshold_percentage)
+                if val > percent_result and val <= max_value+2:  # Example threshold
+                    alert_message = f"Alert: High Reading Detected [{round(val, 2)} {units}]"
+                    send_alert(alert_message)
+                with app.app_context():
+                    global_stream.add_message(val)
+
+                # # Send reading to the frontend
+                # yield "data: {}\n\n".format(json.dumps({"value": "%.2f" % val, "units": units}))
+                
                 # Send reading to the frontend
-                yield "data: {}\n\n".format(json.dumps({"value": "%.2f" % val, "units": units}))
+                if val > min_value and val <= max_value+2:
+                    yield "data: {}\n\n".format(json.dumps({"value": "%.2f" % val, "units": units}))
+                else:
+                    continue
+
+                cv2.putText(img2, "Indicator OK!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA)
 
             else:
                 cv2.putText(img2, "Can't find the indicator!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2, cv2.LINE_AA)
+
 
             # Encode the modified frame
             (flag, encodedImage) = cv2.imencode(".jpg", frame)
@@ -212,6 +311,7 @@ def take_measure(threshold_img, threshold_ln, minLineLength, maxLineGap, diff1Lo
     cv2.destroyAllWindows()
 
 # Parameters
+threshold_percentage = 80
 threshold_img = 120
 threshold_ln = 200
 minLineLength = 40
@@ -229,8 +329,8 @@ diff2UpperBound = 1.0
 min_angle = 60
 max_angle = 300
 min_value = 0
-max_value = 160
-units = "miles"
+max_value = 60
+units = "psi"
 
 
 # These are Flask routes for the web application. The '/' route renders the HTML template, 
@@ -255,6 +355,18 @@ def video_feed():
                                  diff1LowerBound, diff1UpperBound, diff2LowerBound, diff2UpperBound, 
                                  min_angle, max_angle, min_value, max_value, units), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+
+
+@app.route('/msg_stream')
+def msg_stream():
+    def event_stream():
+        while True:
+            messages = global_stream.get_messages()
+            if messages:
+                for message in messages:
+                    yield f"data: {json.dumps(message)}\n\n"
+                global_stream.messages.clear()
+    return Response(event_stream(), mimetype="text/event-stream")
 
 
 
@@ -282,7 +394,6 @@ def login():
         if USERS.get(username) == password:
             session['username'] = username
             flash('You have successfully logged in!', 'success')
-            flash('Now you can access the special feature from the "Explore Tab"', 'success')
             return redirect(url_for('explore'))
         # return 'Invalid username or password! Please try again.'
         flash('Invalid Username or Password! Please try again.', 'error')
@@ -297,7 +408,7 @@ def protected():
 @app.route('/logout')
 def logout():
     session.pop('username', None)
-    flash('You have been logged out. Please login again to use.', 'info')
+    flash('You have been logged out. Please login again to use.', 'error')
     return redirect(url_for('login'))
     # return redirect(url_for('index'))
 
@@ -319,6 +430,38 @@ def stop():
     global is_active
     is_active = False
     return redirect(url_for('gauge'))
+
+
+@app.route('/update_values', methods=['GET', 'POST'])
+def update_values():
+    global min_angle, max_angle, min_value, max_value, units, threshold_percentage
+    
+    if request.method == 'POST':
+        try:
+            # Update values from the form input
+            min_angle = int(request.form['min_angle'])
+            max_angle = int(request.form['max_angle'])
+            min_value = int(request.form['min_value'])
+            max_value = int(request.form['max_value'])
+            units = request.form['units']
+            threshold_percentage = int(request.form['threshold_percentage'])
+            
+            flash('Values are Updated successfully!', 'update')
+            return redirect(url_for('update_values'))
+            
+        except ValueError:
+            flash('Please enter valid integer values for angles and threshold percentage.', 'error')
+
+    input_values = {
+        'min_angle': min_angle,
+        'max_angle': max_angle,
+        'min_value': min_value,
+        'max_value': max_value,
+        'units': units,
+        'threshold_percentage': threshold_percentage
+    }
+    
+    return render_template('update_values.html', input_values=input_values)
 
 
 if __name__ == '__main__':
