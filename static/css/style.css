@@ -268,3 +268,11 @@ a.logo__link {
   .update {
       background-color: #4CAF50; /* Green */
   }
+
+
+.center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100px;
+}
